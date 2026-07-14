@@ -13,6 +13,11 @@ interface AuthState {
 
 interface AuthContextType extends AuthState {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  signUp: (
+    email: string,
+    password: string,
+    fullName?: string
+  ) => Promise<{ error: Error | null; needsConfirmation: boolean }>
   signOut: () => Promise<void>
 }
 
@@ -70,12 +75,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? new Error(error.message) : null }
   }
 
+  async function signUp(email: string, password: string, fullName?: string) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: fullName ? { full_name: fullName } : undefined,
+      },
+    })
+    if (error) {
+      return { error: new Error(error.message), needsConfirmation: false }
+    }
+    // If a session is returned immediately, email confirmation is disabled → user is logged in.
+    // If no session but a user exists, confirmation email was sent.
+    const needsConfirmation = !data.session && !!data.user
+    return { error: null, needsConfirmation }
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, signIn, signOut }}>
+    <AuthContext.Provider value={{ ...state, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   )

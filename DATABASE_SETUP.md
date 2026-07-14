@@ -1,192 +1,142 @@
-# Database Setup Guide — WorkFlow Pro
+# Database Setup Guide — WorkFlow Pro (Phone-Friendly)
 
-## Quick Overview
+> **Good news:** Supabase IS Postgres. You're already using Postgres — Supabase just
+> adds the API + login + hosting on top, so a phone browser can talk to it safely.
+> Raw Postgres (Vercel/Neon) would need a separate backend, so Supabase is the easy path.
 
-তোমার ২টা SQL ফাইল run করতে হবে Supabase SQL Editor-এ:
-
-1. `supabase/migrations/00001_initial_schema.sql` — Database structure (tables + RLS)
-2. `supabase/seed.sql` — Initial data (company, sites, holidays, payroll rules)
-
----
-
-## Step-by-Step Setup
-
-### Step 1: Supabase Project তৈরি
-
-1. Go to [https://supabase.com](https://supabase.com) → Sign Up / Login
-2. Click **"New Project"**
-3. Fill in:
-   - **Project Name:** `workflow-pro`
-   - **Database Password:** (মনে রাখো, secure রাখো)
-   - **Region:** Southeast Asia (Singapore)
-4. Click **"Create new project"** → Wait 1-2 minutes
+This guide is optimized for setting up **entirely from a phone**. You paste **ONE** SQL
+file, set **2** environment variables, then just **Sign Up** in the app. No UUID copying.
 
 ---
 
-### Step 2: Database Schema তৈরি (SQL Editor)
+## The whole setup: 3 things
 
-1. Supabase Dashboard → Left sidebar → **"SQL Editor"** (code icon)
-2. Click **"New query"** (top left)
-3. তোমার repo থেকে এই file open করো:
-   👉 `supabase/migrations/00001_initial_schema.sql`
-4. **সম্পূর্ণ SQL কপি করো** (Ctrl+A → Ctrl+C)
-5. SQL Editor-এ **paste করো** (Ctrl+V)
-6. নিচে **"Run"** button চাপো (অথবা Ctrl+Enter)
+1. Create a Supabase project
+2. Paste ONE SQL file (`supabase/setup.sql`)
+3. Add 2 environment variables in Vercel
 
-✅ সফল হলে: "Success. No rows returned" দেখাবে
-
-> ⚠️ যদি error আসে — সবচেয়ে common সমস্যা:
-> - "extension uuid-ossp does not exist" → Supabase-এ এটা already enabled থাকে, retry করো
-> - "relation already exists" → মানে আগে run হয়ে গেছে, skip করো
+Then open your app → **Sign Up** → done. The first account becomes the admin.
 
 ---
 
-### Step 3: Seed Data (Initial Company + Sites + Holidays)
+## Step 1 — Create Supabase Project
 
-1. আবার **"New query"** click করো
-2. `supabase/seed.sql` ফাইলটা কপি-paste করো
-3. **"Run"** চাপো
-
-✅ এটা তৈরি করবে:
-- Prospect Electrical Engineering Pte Ltd (tenant)
-- Tampines N9C10&12 site
-- Woodlands Site A
-- 2026 Singapore public holidays (11টা)
-- Payroll rules (8h/day, 1.5x OT, 2x rest day, 72h cap)
-- Company settings
+1. Go to [supabase.com](https://supabase.com) → Sign in
+2. **New Project**
+   - Name: `workflow-pro`
+   - Database Password: (choose one, save it)
+   - Region: **Southeast Asia (Singapore)**
+3. **Create** → wait ~2 minutes
 
 ---
 
-### Step 4: Admin User তৈরি
+## Step 2 — Run the ONE setup file
 
-1. Supabase Dashboard → Left sidebar → **"Authentication"**
-2. **"Users"** tab → **"Add User"** button
-3. Fill:
-   - **Email:** তোমার email (e.g., `admin@prospect.sg`)
-   - **Password:** তোমার password
-   - **Auto Confirm User:** ✅ (toggle ON)
-4. Click **"Create User"**
-5. User তৈরি হলে → **UUID কপি করো** (User row-এ click করলে দেখা যাবে)
+1. Left sidebar → **SQL Editor** → **New query**
+2. Open this file from your repo and copy ALL of it:
+   👉 [`supabase/setup.sql`](./supabase/setup.sql)
+   (This = schema + demo company + Singapore holidays + payroll rules + auto-signup trigger, all in one)
+3. Paste into the SQL Editor → press **Run**
 
-6. SQL Editor-এ যাও → New query → এটা run করো:
+✅ You should see "Success." That's the entire database done.
 
-```sql
-INSERT INTO users (id, tenant_id, role, email, full_name, status)
-VALUES (
-  'PASTE-YOUR-USER-UUID-HERE',
-  '11111111-1111-1111-1111-111111111111',
-  'office_staff',
-  'admin@prospect.sg',
-  'Admin',
-  'active'
-);
-```
-
-> ⚠️ `PASTE-YOUR-USER-UUID-HERE` জায়গায় Step 4 থেকে কপি করা UUID paste করো!
-
-✅ এখন login করতে পারবে!
+> 💡 Tip: On GitHub mobile, open `supabase/setup.sql`, tap the "Raw" / copy button to grab the whole file easily.
 
 ---
 
-### Step 5: Vercel Environment Variables
+## Step 3 — Turn OFF email confirmation (makes signup instant)
 
-Supabase Dashboard → **Settings** (gear icon, left sidebar bottom) → **API**
+So you can sign up and log in immediately without checking email:
 
-সেখান থেকে কপি করো:
+1. Supabase → **Authentication** → **Sign In / Providers** → **Email**
+2. Turn **OFF** "Confirm email"
+3. Save
 
-| Supabase-তে যা লেখা | Vercel-এ Key | কোথায় পাবে |
-|---|---|---|
-| **Project URL** | `VITE_SUPABASE_URL` | Settings → API → Project URL |
-| **anon public** key | `VITE_SUPABASE_ANON_KEY` | Settings → API → Project API keys → `anon` `public` |
+(If you skip this, signup still works — you'll just get a confirmation email to click first.)
 
-Vercel-এ:
-1. Project → **Settings** → **Environment Variables**
-2. Add:
-   - Key: `VITE_SUPABASE_URL` → Value: `https://xxxxx.supabase.co`
-   - Key: `VITE_SUPABASE_ANON_KEY` → Value: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpX...`
-3. Apply to: ✅ Production, ✅ Preview, ✅ Development
+---
+
+## Step 4 — Get your 2 keys
+
+Supabase → **Settings** (gear, bottom of sidebar) → **API**
+
+| Copy this | Use as this Vercel variable |
+|-----------|------------------------------|
+| **Project URL** (e.g. `https://abcd.supabase.co`) | `VITE_SUPABASE_URL` |
+| **anon public** key (long token) | `VITE_SUPABASE_ANON_KEY` |
+
+> ❌ Never use the `service_role` key in the app — it's secret.
+
+---
+
+## Step 5 — Add the keys to Vercel
+
+1. [vercel.com](https://vercel.com) → your project → **Settings** → **Environment Variables**
+2. Add both:
+   - `VITE_SUPABASE_URL` = your Project URL
+   - `VITE_SUPABASE_ANON_KEY` = your anon key
+3. Check **Production**, **Preview**, **Development**
 4. **Save**
-5. Go to **Deployments** → Latest → **"..." menu** → **"Redeploy"**
+5. Go to **Deployments** → latest → **⋯** menu → **Redeploy**
 
 ---
 
-### Step 6: Test Login
+## Step 6 — Sign up in the app 🎉
 
-1. তোমার Vercel URL-এ যাও (e.g., `https://workflow-plus.vercel.app`)
-2. Login:
-   - Email: Step 4-এ যে email দিয়েছিলে
-   - Password: Step 4-এ যে password দিয়েছিলে
-3. ✅ Office Staff Dashboard দেখতে পাবে!
+1. Open your Vercel URL (e.g. `https://workflow-plus.vercel.app`)
+2. Tap **Sign Up**
+3. Enter your name, email, password → **Create account**
+4. The **first account automatically becomes the Office Staff admin** — no UUID, no extra query.
+5. You're in! From the Office panel you can add supervisors, workers, sites, etc.
 
 ---
 
-## Adding More Users (Supervisors, Workers)
+## Adding Supervisors & Workers (after you're in)
 
-### Supervisor যোগ করতে:
+Best way: **inside the app** → Office panel → Supervisors / Workers → "Add".
 
-App-এ login → Office Panel → Supervisors → "Add Supervisor"
+They can then sign up / be created and you assign their role. (New self-signups default to
+`worker`; you can change roles from the Office panel or via SQL.)
 
-অথবা manually:
-
-1. Supabase Auth → Add User (email + password)
-2. SQL:
+To change someone's role manually in SQL Editor:
 ```sql
-INSERT INTO users (id, tenant_id, role, email, full_name, status)
-VALUES ('NEW-USER-UUID', '11111111-1111-1111-1111-111111111111', 'supervisor', 'supervisor@email.com', 'Supervisor Name', 'active');
+UPDATE users SET role = 'supervisor' WHERE email = 'person@email.com';
 ```
-
-### Worker যোগ করতে:
-
-App-এ login → Office Panel → Workers → "Add Worker"
-
-(App automatically creates auth user + workers row + assignment)
+Valid roles: `office_staff`, `supervisor`, `worker`, `super_admin`.
 
 ---
 
-## Environment Variables Summary
+## Why not "just Postgres" (Vercel Postgres / Neon)?
 
-| Variable | Where to find | Description |
-|----------|--------------|-------------|
-| `VITE_SUPABASE_URL` | Supabase → Settings → API → Project URL | Your Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase → Settings → API → anon public | Public API key (safe for frontend) |
+| | Supabase (what we use) | Raw Postgres |
+|---|---|---|
+| Database (Postgres) | ✅ | ✅ |
+| Auto REST API for the browser | ✅ built-in | ❌ must build a backend |
+| Login / Auth | ✅ built-in | ❌ must build it |
+| Security (Row-Level Security) | ✅ | manual |
+| Works from a phone browser directly | ✅ | ❌ (needs a server in between) |
 
-শুধু এই ২টাই লাগে! ❌ `service_role` key কখনো frontend-এ দিবে না — সেটা secret।
+Supabase gives you Postgres **plus** the API and login for free, so there's no backend to build.
+
+---
+
+## Environment Variables (summary)
+
+| Variable | Where |
+|----------|-------|
+| `VITE_SUPABASE_URL` | Supabase → Settings → API → Project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase → Settings → API → anon public |
+
+Only these two. Nothing else.
 
 ---
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| Login করলে error | Check: user কি Auth-এ আছে? `users` table-এ row আছে? |
-| "Invalid credentials" | Email/password check; Supabase Auth → user status = confirmed? |
-| Dashboard empty | Seed data run হয়েছে? `tenants` table check করো |
-| "RLS policy violation" | `users` table-এ `tenant_id` ঠিক আছে? trigger run হয়েছে? |
-| Vercel-এ blank page | Environment variables add করেছো? Redeploy করেছো? |
-
----
-
-## Database Tables (25+)
-
-| Table | Purpose |
-|-------|---------|
-| `tenants` | Companies (multi-tenant) |
-| `users` | All users (linked to auth.users) |
-| `workers` | Worker profiles |
-| `sites` | Construction sites |
-| `worker_assignments` | Worker ↔ Site ↔ Supervisor |
-| `attendance_entries` | Daily work record (the digital card) |
-| `signatures` | Digital signatures |
-| `ot_consents` | OT/Rest-day consent forms |
-| `correction_requests` | Attendance corrections |
-| `payroll_rules` | Configurable OT/salary rules |
-| `payroll_runs` | Monthly payroll cycles |
-| `payroll_items` | Per-worker salary calculation |
-| `payslips` | Generated payslips with QR |
-| `worker_documents` | Passport, WP, insurance |
-| `ppe_forms` | PPE acknowledgment forms |
-| `ppe_signoffs` | Worker PPE signatures |
-| `notifications` | In-app notifications |
-| `audit_logs` | Every action recorded |
-| `settings` | Company configuration |
-| `holiday_calendar` | Public holidays |
+| Problem | Fix |
+|---------|-----|
+| Blank page on Vercel | Env vars added? Redeployed after adding? |
+| Can't log in after signup | Email confirmation still ON — disable it (Step 3) or click the email link |
+| "Invalid credentials" | Wrong email/password, or account not confirmed |
+| First user isn't admin | Make sure `setup.sql` ran fully (it creates the auto-signup trigger + demo tenant) |
+| Want to reset | In SQL Editor: delete rows from `users` and re-run, or delete the auth user in Authentication |
