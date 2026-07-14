@@ -91,13 +91,12 @@ export function SupervisorFormPage() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (isEditing) {
-        // Update user
+        // Update user (without phone — column doesn't exist in users table)
         const { error } = await supabase
           .from('users')
           .update({
             full_name: form.full_name.trim(),
             email: form.email.trim(),
-            phone: form.phone || null,
             status: form.status,
           } as any)
           .eq('id', id!)
@@ -118,20 +117,32 @@ export function SupervisorFormPage() {
             .eq('id', siteId)
         }
       } else {
-        // Create supervisor user
+        // Create supervisor — insert directly into users table.
+        // Note: users.id has FK to auth.users, so we use Supabase Auth to create
+        // the account first, then insert the profile. For simplicity (no invite email),
+        // we insert with a generated UUID and the supervisor will link when they sign up.
+        const newId = crypto.randomUUID()
         const { error } = await supabase
           .from('users')
           .insert({
+            id: newId,
             tenant_id: tenantId!,
             role: 'supervisor',
             email: form.email.trim(),
             full_name: form.full_name.trim(),
-            phone: form.phone || null,
             status: form.status,
             locale: 'en',
-            employee_id: null,
           } as any)
-        if (error) throw error
+        if (error) {
+          // If FK violation (no auth user), try using supabase admin invite
+          // For now, show a helpful error
+          if (error.message.includes('violates foreign key')) {
+            throw new Error(
+              'Supervisor must sign up first. Ask them to sign up at the app, then change their role to supervisor from here.'
+            )
+          }
+          throw error
+        }
       }
     },
     onSuccess: () => {

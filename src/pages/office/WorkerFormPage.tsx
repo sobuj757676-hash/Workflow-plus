@@ -190,9 +190,10 @@ export function WorkerFormPage() {
         })
       : null
 
-    const workerData: WorkerInsert = {
+    // Build worker data — omit user_id (nullable via ALTER in fix migration).
+    // user_id will be linked when the worker signs up with their own account.
+    const workerData: any = {
       tenant_id: tenantId!,
-      user_id: '', // Will be linked when user account is created
       full_name: form.full_name.trim(),
       employee_id: form.employee_id.trim(),
       photo_url: form.photo_url || null,
