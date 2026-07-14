@@ -21,6 +21,7 @@ const navItems: Record<UserRole, NavItem[]> = {
     { label: 'Dashboard', path: '/office', icon: '📊' },
     { label: 'Workers', path: '/office/workers', icon: '👷' },
     { label: 'Supervisors', path: '/office/supervisors', icon: '👔' },
+    { label: 'Team & Roles', path: '/office/team', icon: '🔑' },
     { label: 'Sites', path: '/office/sites', icon: '🏗️' },
     { label: 'Attendance', path: '/office/attendance', icon: '📋' },
     { label: 'OT Consents', path: '/office/ot-consents', icon: '⏰' },

@@ -17,6 +17,7 @@ import { WorkerDetailPage } from '@/pages/office/WorkerDetailPage'
 import { WorkerAssignmentPage } from '@/pages/office/WorkerAssignmentPage'
 import { SupervisorsPage } from '@/pages/office/SupervisorsPage'
 import { SupervisorFormPage } from '@/pages/office/SupervisorFormPage'
+import { TeamPage } from '@/pages/office/TeamPage'
 import { SitesPage } from '@/pages/office/SitesPage'
 import { SiteFormPage } from '@/pages/office/SiteFormPage'
 import { OfficeAttendancePage } from '@/pages/office/AttendancePage'
@@ -89,6 +90,7 @@ function App() {
                 <Route path="/office/supervisors" element={<SupervisorsPage />} />
                 <Route path="/office/supervisors/new" element={<SupervisorFormPage />} />
                 <Route path="/office/supervisors/:id/edit" element={<SupervisorFormPage />} />
+                <Route path="/office/team" element={<TeamPage />} />
                 <Route path="/office/sites" element={<SitesPage />} />
                 <Route path="/office/sites/new" element={<SiteFormPage />} />
                 <Route path="/office/sites/:id/edit" element={<SiteFormPage />} />

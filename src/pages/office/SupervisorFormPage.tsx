@@ -31,6 +31,7 @@ export function SupervisorFormPage() {
   const [form, setForm] = useState<SupervisorFormData>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof SupervisorFormData, string>>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [inviteSent, setInviteSent] = useState(false)
 
   // Fetch existing supervisor when editing
   const { data: existingSupervisor, isLoading: isLoadingSupervisor } = useQuery({
@@ -117,38 +118,25 @@ export function SupervisorFormPage() {
             .eq('id', siteId)
         }
       } else {
-        // Create supervisor — insert directly into users table.
-        // Note: users.id has FK to auth.users, so we use Supabase Auth to create
-        // the account first, then insert the profile. For simplicity (no invite email),
-        // we insert with a generated UUID and the supervisor will link when they sign up.
-        const newId = crypto.randomUUID()
-        const { error } = await supabase
-          .from('users')
-          .insert({
-            id: newId,
-            tenant_id: tenantId!,
-            role: 'supervisor',
-            email: form.email.trim(),
-            full_name: form.full_name.trim(),
-            status: form.status,
-            locale: 'en',
-          } as any)
-        if (error) {
-          // If FK violation (no auth user), try using supabase admin invite
-          // For now, show a helpful error
-          if (error.message.includes('violates foreign key')) {
-            throw new Error(
-              'Supervisor must sign up first. Ask them to sign up at the app, then change their role to supervisor from here.'
-            )
-          }
-          throw error
-        }
+        // Create supervisor via INVITATION (production-safe, no service_role).
+        // The person signs up with this email and is auto-assigned the supervisor role.
+        const { error } = await supabase.rpc('admin_invite_user', {
+          p_email: form.email.trim().toLowerCase(),
+          p_role: 'supervisor',
+          p_full_name: form.full_name.trim(),
+        })
+        if (error) throw error
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supervisors'] })
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
       queryClient.invalidateQueries({ queryKey: ['sites'] })
-      navigate('/office/supervisors')
+      if (!isEditing) {
+        setInviteSent(true)
+      } else {
+        navigate('/office/supervisors')
+      }
     },
     onError: (error) => {
       setSubmitError(error.message)
@@ -189,6 +177,44 @@ export function SupervisorFormPage() {
     )
   }
 
+  // Invitation sent confirmation
+  if (inviteSent) {
+    return (
+      <div className="space-y-6 max-w-lg">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-green-100 rounded-full mb-4">
+            <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold mb-2">Invitation created</h2>
+          <p className="text-sm text-[var(--color-text-muted)] mb-4">
+            Ask <strong>{form.full_name}</strong> to open the app and <strong>Sign Up</strong> using{' '}
+            <strong>{form.email}</strong>. They will automatically become a <strong>Supervisor</strong> —
+            no extra steps needed.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => {
+                setInviteSent(false)
+                setForm(INITIAL_FORM)
+              }}
+              className="px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium hover:bg-gray-50"
+            >
+              Invite another
+            </button>
+            <button
+              onClick={() => navigate('/office/supervisors')}
+              className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-dark)]"
+            >
+              Back to Supervisors
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Header */}
@@ -206,7 +232,7 @@ export function SupervisorFormPage() {
             {isEditing ? 'Edit Supervisor' : 'Add Supervisor'}
           </h1>
           <p className="text-sm text-[var(--color-text-muted)]">
-            {isEditing ? 'Update supervisor details' : 'Create a new supervisor account'}
+            {isEditing ? 'Update supervisor details' : 'Invite a supervisor by email — they sign up and get the role automatically'}
           </p>
         </div>
       </div>
@@ -309,7 +335,7 @@ export function SupervisorFormPage() {
             disabled={mutation.isPending}
             className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50"
           >
-            {mutation.isPending ? 'Saving...' : isEditing ? 'Update Supervisor' : 'Create Supervisor'}
+            {mutation.isPending ? 'Saving...' : isEditing ? 'Update Supervisor' : 'Send Invitation'}
           </button>
         </div>
       </form>
