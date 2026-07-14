@@ -1,0 +1,23 @@
+# Supabase CLI configuration for WorkFlow Pro
+# Run: supabase link --project-ref YOUR_PROJECT_REF
+# Then: supabase db push
+
+[project]
+id = ""  # Fill with your Supabase project ref ID
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false  # Disable email confirmation for dev
