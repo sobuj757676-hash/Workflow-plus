@@ -405,7 +405,7 @@ CREATE UNIQUE INDEX idx_settings_tenant_key ON settings(tenant_id, key);
 -- ============================================================================
 
 -- Helper function: get tenant_id from JWT
-CREATE OR REPLACE FUNCTION auth.tenant_id()
+CREATE OR REPLACE FUNCTION public.get_tenant_id()
 RETURNS UUID AS $$
   SELECT COALESCE(
     (current_setting('request.jwt.claims', TRUE)::jsonb -> 'app_metadata' ->> 'tenant_id')::UUID,
@@ -414,7 +414,7 @@ RETURNS UUID AS $$
 $$ LANGUAGE sql STABLE;
 
 -- Helper function: get role from JWT
-CREATE OR REPLACE FUNCTION auth.user_role()
+CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS TEXT AS $$
   SELECT COALESCE(
     current_setting('request.jwt.claims', TRUE)::jsonb -> 'app_metadata' ->> 'role',
@@ -447,77 +447,77 @@ ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 -- === TENANTS ===
 -- Super Admin can see all; others see own tenant only
 CREATE POLICY "tenants_super_admin" ON tenants
-  FOR ALL USING (auth.user_role() = 'super_admin');
+  FOR ALL USING (public.get_user_role() = 'super_admin');
 
 CREATE POLICY "tenants_member_read" ON tenants
-  FOR SELECT USING (id = auth.tenant_id());
+  FOR SELECT USING (id = public.get_tenant_id());
 
 -- === USERS ===
 CREATE POLICY "users_tenant_isolation" ON users
   FOR ALL USING (
-    auth.user_role() = 'super_admin'
-    OR tenant_id = auth.tenant_id()
+    public.get_user_role() = 'super_admin'
+    OR tenant_id = public.get_tenant_id()
   );
 
 -- === WORKERS ===
 CREATE POLICY "workers_tenant_isolation" ON workers
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === SITES ===
 CREATE POLICY "sites_tenant_isolation" ON sites
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === WORKER ASSIGNMENTS ===
 CREATE POLICY "assignments_tenant_isolation" ON worker_assignments
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === PAYROLL RULES ===
 CREATE POLICY "payroll_rules_tenant_isolation" ON payroll_rules
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === HOLIDAY CALENDAR ===
 CREATE POLICY "holidays_tenant_isolation" ON holiday_calendar
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === SIGNATURES ===
 CREATE POLICY "signatures_tenant_isolation" ON signatures
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === ATTENDANCE ENTRIES ===
 CREATE POLICY "attendance_tenant_isolation" ON attendance_entries
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === OT CONSENTS ===
 CREATE POLICY "ot_consents_tenant_isolation" ON ot_consents
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === CORRECTION REQUESTS ===
 CREATE POLICY "corrections_tenant_isolation" ON correction_requests
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === PAYROLL RUNS ===
 CREATE POLICY "payroll_runs_tenant_isolation" ON payroll_runs
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === PAYROLL ITEMS ===
 CREATE POLICY "payroll_items_tenant_isolation" ON payroll_items
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === PAYSLIPS ===
 CREATE POLICY "payslips_tenant_isolation" ON payslips
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === WORKER DOCUMENTS ===
 CREATE POLICY "documents_tenant_isolation" ON worker_documents
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === PPE FORMS ===
 CREATE POLICY "ppe_forms_tenant_isolation" ON ppe_forms
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === PPE SIGNOFFS ===
 CREATE POLICY "ppe_signoffs_tenant_isolation" ON ppe_signoffs
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- === NOTIFICATIONS ===
 CREATE POLICY "notifications_own" ON notifications
@@ -526,13 +526,13 @@ CREATE POLICY "notifications_own" ON notifications
 -- === AUDIT LOGS (read-only for tenant members) ===
 CREATE POLICY "audit_logs_read" ON audit_logs
   FOR SELECT USING (
-    auth.user_role() = 'super_admin'
-    OR tenant_id = auth.tenant_id()
+    public.get_user_role() = 'super_admin'
+    OR tenant_id = public.get_tenant_id()
   );
 
 -- === SETTINGS ===
 CREATE POLICY "settings_tenant_isolation" ON settings
-  FOR ALL USING (tenant_id = auth.tenant_id());
+  FOR ALL USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- TRIGGER: Set custom claims on user creation/update (for JWT role & tenant_id)
