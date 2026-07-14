@@ -1,0 +1,99 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "submit": "Submit",
+    "approve": "Approve",
+    "reject": "Reject",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "close": "Close",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "download": "Download",
+    "upload": "Upload",
+    "loading": "Loading...",
+    "noData": "No data available",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "workers": "Workers",
+    "supervisors": "Supervisors",
+    "sites": "Sites",
+    "attendance": "Attendance",
+    "otConsents": "OT Consents",
+    "payroll": "Payroll",
+    "payslips": "Payslips",
+    "documents": "Documents",
+    "ppe": "PPE",
+    "reports": "Reports",
+    "auditLog": "Audit Log",
+    "settings": "Settings",
+    "notifications": "Notifications",
+    "myAttendance": "My Attendance",
+    "myPayslips": "My Payslips",
+    "myDocuments": "My Documents",
+    "corrections": "Corrections",
+    "tenants": "Tenants",
+    "logout": "Logout"
+  },
+  "login": {
+    "title": "Welcome Back",
+    "subtitle": "Sign in to WorkFlow Pro",
+    "email": "Email Address",
+    "password": "Password",
+    "signIn": "Sign In",
+    "forgotPassword": "Forgot Password?",
+    "signingIn": "Signing in..."
+  },
+  "dashboard": {
+    "office": {
+      "title": "Office Dashboard",
+      "welcome": "Welcome back, {{name}}",
+      "totalWorkers": "Total Workers",
+      "totalSupervisors": "Total Supervisors",
+      "totalSites": "Total Sites",
+      "todayAttendance": "Today's Attendance",
+      "todayOT": "Today's OT",
+      "pendingApproval": "Pending Approval",
+      "activeDocuments": "Active Documents",
+      "monthlyCost": "Monthly Salary Cost",
+      "recentActivities": "Recent Activities",
+      "attendanceTrend": "Attendance This Week"
+    },
+    "supervisor": {
+      "title": "Supervisor Dashboard",
+      "subtitle": "Manage your site and workers",
+      "myWorkers": "My Workers",
+      "presentToday": "Present Today",
+      "pendingAttendance": "Pending Attendance",
+      "currentSite": "Current Site",
+      "quickAttendance": "Quick Attendance"
+    },
+    "worker": {
+      "title": "My Dashboard",
+      "subtitle": "Your work overview",
+      "todayStatus": "Today's Status",
+      "currentSite": "Current Site",
+      "supervisor": "Supervisor",
+      "otThisMonth": "OT This Month",
+      "projectedEarnings": "Projected Earnings",
+      "attendanceSummary": "Attendance Summary",
+      "daysWorked": "Days Worked",
+      "daysRemaining": "Days Remaining",
+      "totalDays": "Total Days"
+    }
+  },
+  "language": {
+    "en": "English",
+    "bn": "Bengali",
+    "zh": "Chinese",
+    "ta": "Tamil"
+  }
+}

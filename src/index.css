@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* Custom base styles */
+@layer base {
+  :root {
+    --color-primary: #1e40af;
+    --color-primary-light: #3b82f6;
+    --color-primary-dark: #1e3a8a;
+    --color-success: #16a34a;
+    --color-warning: #d97706;
+    --color-danger: #dc2626;
+    --color-surface: #ffffff;
+    --color-background: #f8fafc;
+    --color-text: #1e293b;
+    --color-text-muted: #64748b;
+    --color-border: #e2e8f0;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Toast animation */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
