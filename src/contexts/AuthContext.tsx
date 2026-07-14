@@ -70,9 +70,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /**
+   * Ensures the logged-in user has a public.users profile.
+   * Calls the SECURITY DEFINER function setup_new_user(), then refreshes the
+   * session so the new role/tenant_id claims land in the JWT.
+   * Safe to call every login — the function is idempotent.
+   */
+  async function ensureProfile(fullName?: string) {
+    try {
+      const { error } = await supabase.rpc('setup_new_user', {
+        p_full_name: fullName ?? null,
+      })
+      if (error) {
+        console.warn('setup_new_user failed:', error.message)
+        return
+      }
+      // Refresh the token so app_metadata (role, tenant_id) is up to date.
+      const { data } = await supabase.auth.refreshSession()
+      if (data.session) {
+        updateStateFromSession(data.session)
+      }
+    } catch (e) {
+      console.warn('ensureProfile error:', e)
+    }
+  }
+
   async function signIn(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error: error ? new Error(error.message) : null }
+    if (error) {
+      return { error: new Error(error.message) }
+    }
+    await ensureProfile()
+    return { error: null }
   }
 
   async function signUp(email: string, password: string, fullName?: string) {
@@ -89,6 +118,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // If a session is returned immediately, email confirmation is disabled → user is logged in.
     // If no session but a user exists, confirmation email was sent.
     const needsConfirmation = !data.session && !!data.user
+    if (data.session) {
+      // Logged in right away → create the profile now.
+      await ensureProfile(fullName)
+    }
     return { error: null, needsConfirmation }
   }
 

@@ -680,54 +680,76 @@ VALUES
 
 
 -- ============================================================================
--- AUTO-SIGNUP TRIGGER  (makes setup phone-friendly — no UUID copying!)
+-- SELF-SERVE SIGNUP FUNCTION  (phone-friendly — no UUID copying!)
 --
--- When anyone signs up through Supabase Auth (or the app), this trigger
--- automatically creates their public.users profile:
+-- NOTE: Supabase does NOT allow creating triggers on the "auth" schema from the
+-- SQL Editor (permission denied for schema auth). So instead of a trigger on
+-- auth.users, we expose a SECURITY DEFINER function in the PUBLIC schema that
+-- the app calls right after signup. It creates the caller's public.users
+-- profile automatically:
 --   * The FIRST user in the demo tenant becomes 'office_staff' (the admin)
 --   * Everyone after that becomes 'worker' (office staff can change roles later)
--- This removes the manual "copy the UUID and INSERT into users" step.
+-- Because it is SECURITY DEFINER (runs as the owner), it bypasses RLS safely
+-- and only ever creates a row for the CALLER (auth.uid()).
 -- ============================================================================
-CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION public.setup_new_user(p_full_name TEXT DEFAULT NULL)
+RETURNS public.users AS $$
 DECLARE
   demo_tenant UUID := '11111111-1111-1111-1111-111111111111';
+  caller UUID := auth.uid();
+  caller_email TEXT;
   existing_count INT;
   assigned_role TEXT;
+  result_row public.users;
 BEGIN
-  SELECT COUNT(*) INTO existing_count FROM public.users WHERE tenant_id = demo_tenant;
+  IF caller IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
 
+  -- If a profile already exists, just return it (idempotent).
+  SELECT * INTO result_row FROM public.users WHERE id = caller;
+  IF FOUND THEN
+    RETURN result_row;
+  END IF;
+
+  -- Read the email from auth.users (allowed inside SECURITY DEFINER).
+  SELECT email INTO caller_email FROM auth.users WHERE id = caller;
+
+  -- First user in the tenant becomes the office_staff admin.
+  SELECT COUNT(*) INTO existing_count FROM public.users WHERE tenant_id = demo_tenant;
   IF existing_count = 0 THEN
-    assigned_role := 'office_staff';   -- first ever user = admin
+    assigned_role := 'office_staff';
   ELSE
-    assigned_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'worker');
+    assigned_role := 'worker';
   END IF;
 
   INSERT INTO public.users (id, tenant_id, role, email, full_name, status)
   VALUES (
-    NEW.id,
+    caller,
     demo_tenant,
     assigned_role,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data ->> 'full_name', split_part(NEW.email, '@', 1)),
+    caller_email,
+    COALESCE(NULLIF(p_full_name, ''), split_part(caller_email, '@', 1)),
     'active'
   )
-  ON CONFLICT (id) DO NOTHING;
+  RETURNING * INTO result_row;
 
-  RETURN NEW;
+  RETURN result_row;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_auth_user();
+-- Allow logged-in users to call it (only ever affects their own row).
+GRANT EXECUTE ON FUNCTION public.setup_new_user(TEXT) TO authenticated;
+
+-- Let a user read their own profile row (harmless, helpful).
+DROP POLICY IF EXISTS users_read_own ON public.users;
+CREATE POLICY users_read_own ON public.users
+  FOR SELECT USING (id = auth.uid());
 
 -- ============================================================================
 -- DONE! Setup complete.
 --
--- NEXT: Just go to your app and SIGN UP (or Supabase > Authentication > Add User).
--- The very first account automatically becomes the Office Staff admin.
--- No UUID copying, no second query needed.
+-- NEXT: Just go to your app and SIGN UP. The app calls setup_new_user()
+-- automatically after signup, so your profile is created for you.
+-- The very first account becomes the Office Staff admin. No UUID copying.
 -- ============================================================================
