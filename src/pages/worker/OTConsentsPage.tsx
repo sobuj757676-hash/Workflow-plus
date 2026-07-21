@@ -1,32 +1,32 @@
-import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useState } from 'react'
 import { SignaturePad } from '@/components/SignaturePad'
 
 interface OtConsentRow {
   id: string
-  tenant_id: string
   worker_id: string
-  supervisor_id: string
-  date: string
-  time_from: string
-  time_to: string
+  requested_by: string
+  site_id: string | null
   work_type: string
+  date: string
+  time_from: string | null
+  time_to: string | null
   status: string
-  worker_response_at: string | null
+  responded_at: string | null
   created_at: string
 }
 
 export function WorkerOTConsentsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [signingId, setSigningId] = useState<string | null>(null)
+  const [respondingTo, setRespondingTo] = useState<string | null>(null)
   const [signature, setSignature] = useState<string | null>(null)
 
-  // Fetch worker record to get worker_id
-  const { data: workerRecord } = useQuery({
-    queryKey: ['worker-record', user?.id],
+  // Get worker record
+  const { data: worker } = useQuery({
+    queryKey: ['my-worker', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('workers')
@@ -34,212 +34,199 @@ export function WorkerOTConsentsPage() {
         .eq('user_id', user!.id)
         .single()
       if (error) throw error
-      return data as { id: string }
+      return data
     },
     enabled: !!user?.id,
   })
 
-  // Fetch OT consents for this worker
+  // Fetch OT consents
   const { data: consents, isLoading } = useQuery({
-    queryKey: ['my-ot-consents', workerRecord?.id],
+    queryKey: ['my-ot-consents', worker?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ot_consents')
         .select('*')
-        .eq('worker_id', workerRecord!.id)
+        .eq('worker_id', worker!.id)
         .order('created_at', { ascending: false })
       if (error) throw error
       return data as OtConsentRow[]
     },
-    enabled: !!workerRecord?.id,
+    enabled: !!worker?.id,
   })
 
-  const pendingConsents = consents?.filter((c) => c.status === 'requested') ?? []
-  const historyConsents = consents?.filter((c) => c.status !== 'requested') ?? []
-
-  // Approve/Decline mutation
+  // Respond mutation
   const respondMutation = useMutation({
-    mutationFn: async ({ id, response }: { id: string; response: 'approved' | 'declined' }) => {
+    mutationFn: async ({ consentId, response }: { consentId: string; response: 'approved' | 'declined' }) => {
       const { error } = await supabase
         .from('ot_consents')
         .update({
           status: response,
-          worker_response_at: new Date().toISOString(),
-        })
-        .eq('id', id)
+          responded_at: new Date().toISOString(),
+        } as any)
+        .eq('id', consentId)
       if (error) throw error
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-ot-consents'] })
-      setSigningId(null)
+      setRespondingTo(null)
       setSignature(null)
     },
   })
 
-  function handleApprove(id: string) {
-    setSigningId(id)
+  function handleApprove(consentId: string) {
+    respondMutation.mutate({ consentId, response: 'approved' })
   }
 
-  function confirmApprove() {
-    if (!signingId) return
-    respondMutation.mutate({ id: signingId, response: 'approved' })
+  function handleDecline(consentId: string) {
+    respondMutation.mutate({ consentId, response: 'declined' })
   }
 
-  function handleDecline(id: string) {
-    if (confirm('Are you sure you want to decline this OT request?')) {
-      respondMutation.mutate({ id, response: 'declined' })
-    }
+  const pendingConsents = consents?.filter((c) => c.status === 'requested') ?? []
+  const pastConsents = consents?.filter((c) => c.status !== 'requested') ?? []
+
+  const workTypeLabels: Record<string, string> = {
+    ot: 'Overtime',
+    rest_day: 'Rest Day Work',
+    public_holiday: 'Public Holiday Work',
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">My OT Consents</h1>
+        <h1 className="text-2xl font-bold">OT Consents</h1>
         <p className="text-sm text-[var(--color-text-muted)]">
-          Review and respond to overtime consent requests
+          Review and respond to overtime/rest day work requests
         </p>
       </div>
 
-      {/* Signing Modal */}
-      {signingId && (
-        <div className="bg-white rounded-xl border-2 border-[var(--color-primary)] p-5 space-y-4">
-          <h3 className="font-semibold">Sign to Approve OT Consent</h3>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            By signing below, you consent to the overtime work request.
-          </p>
-          <SignaturePad
-            label="Your Signature"
-            onSignatureChange={setSignature}
-            width={280}
-            height={120}
-          />
-          <div className="flex items-center gap-3">
-            <button
-              onClick={confirmApprove}
-              disabled={!signature || respondMutation.isPending}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
-            >
-              {respondMutation.isPending ? 'Saving...' : 'Confirm Approval'}
-            </button>
-            <button
-              onClick={() => { setSigningId(null); setSignature(null) }}
-              className="px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
+      {isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <svg className="animate-spin h-6 w-6 text-[var(--color-primary)]" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        </div>
+      )}
+
+      {/* Pending Consents */}
+      {pendingConsents.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-amber-700 mb-3">
+            Pending ({pendingConsents.length})
+          </h2>
+          <div className="space-y-3">
+            {pendingConsents.map((consent) => (
+              <div key={consent.id} className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                    {workTypeLabels[consent.work_type] ?? consent.work_type}
+                  </span>
+                  <span className="text-xs text-[var(--color-text-muted)]">
+                    {new Date(consent.created_at).toLocaleDateString('en-SG')}
+                  </span>
+                </div>
+                <p className="text-sm font-medium">
+                  Date: {new Date(consent.date).toLocaleDateString('en-SG', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
+                {consent.time_from && consent.time_to && (
+                  <p className="text-sm text-[var(--color-text-muted)]">
+                    Time: {consent.time_from} - {consent.time_to}
+                  </p>
+                )}
+
+                {respondingTo === consent.id ? (
+                  <div className="mt-3 space-y-3">
+                    <SignaturePad
+                      label="Your Signature (to approve)"
+                      onSignatureChange={setSignature}
+                      width={280}
+                      height={100}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleApprove(consent.id)}
+                        disabled={!signature || respondMutation.isPending}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                      >
+                        Sign & Approve
+                      </button>
+                      <button
+                        onClick={() => handleDecline(consent.id)}
+                        disabled={respondMutation.isPending}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                      >
+                        Decline
+                      </button>
+                      <button
+                        onClick={() => { setRespondingTo(null); setSignature(null) }}
+                        className="px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm hover:bg-gray-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setRespondingTo(consent.id)}
+                      className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors"
+                    >
+                      Respond
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Pending Requests */}
-      <div className="bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-[var(--color-border)] bg-amber-50">
-          <h3 className="font-medium text-sm text-amber-900">
-            Pending Requests
-            {pendingConsents.length > 0 && (
-              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-amber-200 text-amber-900">
-                {pendingConsents.length}
-              </span>
-            )}
-          </h3>
-        </div>
-        {isLoading ? (
-          <div className="p-8 text-center text-[var(--color-text-muted)]">Loading...</div>
-        ) : pendingConsents.length === 0 ? (
-          <div className="p-8 text-center text-[var(--color-text-muted)]">
-            No pending OT consent requests.
-          </div>
-        ) : (
-          <div className="divide-y divide-[var(--color-border)]">
-            {pendingConsents.map((consent) => (
-              <div key={consent.id} className="px-4 py-3">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">
-                      {consent.work_type === 'ot'
-                        ? 'Overtime Work'
-                        : consent.work_type === 'rest_day'
-                          ? 'Rest Day Work'
-                          : 'Public Holiday Work'}
-                    </p>
-                    <p className="text-xs text-[var(--color-text-muted)]">
-                      Date: {consent.date} | Time: {consent.time_from} - {consent.time_to}
-                    </p>
-                    <p className="text-xs text-[var(--color-text-muted)]">
-                      Requested: {new Date(consent.created_at).toLocaleDateString()}
-                    </p>
+      {/* Past Consents */}
+      {pastConsents.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--color-text-muted)] mb-3">
+            History ({pastConsents.length})
+          </h2>
+          <div className="bg-white rounded-xl border border-[var(--color-border)] divide-y divide-[var(--color-border)]">
+            {pastConsents.map((consent) => (
+              <div key={consent.id} className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium">
+                      {new Date(consent.date).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                    <span className="text-xs text-[var(--color-text-muted)]">
+                      {workTypeLabels[consent.work_type] ?? consent.work_type}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleApprove(consent.id)}
-                      disabled={respondMutation.isPending}
-                      className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleDecline(consent.id)}
-                      disabled={respondMutation.isPending}
-                      className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
+                  {consent.time_from && consent.time_to && (
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      {consent.time_from} - {consent.time_to}
+                    </p>
+                  )}
                 </div>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  consent.status === 'approved'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {consent.status}
+                </span>
               </div>
             ))}
           </div>
-        )}
-      </div>
-
-      {/* History */}
-      <div className="bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-[var(--color-border)]">
-          <h3 className="font-medium text-sm">History</h3>
         </div>
-        {historyConsents.length === 0 ? (
-          <div className="p-8 text-center text-[var(--color-text-muted)]">
-            No past consent records.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-[var(--color-border)]">
-                <tr>
-                  <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Date</th>
-                  <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Time</th>
-                  <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Type</th>
-                  <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Response</th>
-                  <th className="text-left px-4 py-2 font-medium text-[var(--color-text-muted)]">Responded</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-border)]">
-                {historyConsents.map((consent) => (
-                  <tr key={consent.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2">{consent.date}</td>
-                    <td className="px-4 py-2">{consent.time_from} - {consent.time_to}</td>
-                    <td className="px-4 py-2 capitalize">{consent.work_type.replace('_', ' ')}</td>
-                    <td className="px-4 py-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        consent.status === 'approved'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {consent.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-[var(--color-text-muted)]">
-                      {consent.worker_response_at
-                        ? new Date(consent.worker_response_at).toLocaleDateString()
-                        : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      )}
+
+      {!isLoading && (!consents || consents.length === 0) && (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-12 text-center">
+          <span className="text-4xl">⏰</span>
+          <p className="mt-3 font-medium">No OT consent requests</p>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">
+            You'll see requests here when your supervisor schedules overtime or rest day work.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

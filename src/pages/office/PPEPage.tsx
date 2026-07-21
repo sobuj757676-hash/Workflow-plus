@@ -1,57 +1,28 @@
 import { useState } from 'react'
-import type { PPEFormRow, PPEItem } from '@/types/database'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import type { SiteRow, WorkerRow } from '@/types/database'
 
-// Mock data
-const MOCK_SITES = [
-  { id: 's1', name: 'Marina Bay Tower' },
-  { id: 's2', name: 'Jurong West HDB' },
-  { id: 's3', name: 'Changi Terminal 5' },
-]
+interface PPEItem {
+  name: string
+  quantity: number
+}
 
-const MOCK_PPE_FORMS: PPEFormRow[] = [
-  {
-    id: 'ppe1',
-    tenant_id: 't1',
-    site_id: 's1',
-    site_name: 'Marina Bay Tower',
-    period: '2024-03',
-    items: [
-      { name: 'Safety Helmet', quantity: 10 },
-      { name: 'Safety Boots', quantity: 10 },
-      { name: 'Hi-Vis Vest', quantity: 10 },
-    ],
-    sign_offs: [
-      { worker_id: 'w1', worker_name: 'Ali bin Hassan', signed: true, signature_id: 'sig1', signed_at: '2024-03-05T08:00:00Z' },
-      { worker_id: 'w2', worker_name: 'Kumar Rajan', signed: true, signature_id: 'sig2', signed_at: '2024-03-05T09:30:00Z' },
-      { worker_id: 'w3', worker_name: 'Chen Wei Ming', signed: false, signature_id: null, signed_at: null },
-    ],
-    status: 'open',
-    created_by: 'admin',
-    created_at: '2024-03-01T08:00:00Z',
-    updated_at: '2024-03-05T09:30:00Z',
-  },
-  {
-    id: 'ppe2',
-    tenant_id: 't1',
-    site_id: 's2',
-    site_name: 'Jurong West HDB',
-    period: '2024-03',
-    items: [
-      { name: 'Safety Helmet', quantity: 5 },
-      { name: 'Safety Harness', quantity: 5 },
-      { name: 'Gloves', quantity: 5 },
-      { name: 'Safety Goggles', quantity: 5 },
-    ],
-    sign_offs: [
-      { worker_id: 'w4', worker_name: 'Muthu Selvam', signed: true, signature_id: 'sig3', signed_at: '2024-03-02T10:00:00Z' },
-      { worker_id: 'w5', worker_name: 'Bao Tran', signed: true, signature_id: 'sig4', signed_at: '2024-03-02T10:15:00Z' },
-    ],
-    status: 'completed',
-    created_by: 'admin',
-    created_at: '2024-03-01T08:00:00Z',
-    updated_at: '2024-03-02T10:15:00Z',
-  },
-]
+interface PPEForm {
+  id: string
+  site_id: string
+  period: string
+  items: PPEItem[]
+  created_at: string
+}
+
+interface PPESignoff {
+  id: string
+  ppe_form_id: string
+  worker_id: string
+  acknowledged_at: string
+}
 
 const PPE_PRESETS = [
   'Safety Helmet',
@@ -67,14 +38,103 @@ const PPE_PRESETS = [
 ]
 
 export function OfficePPEPage() {
+  const { tenantId, user } = useAuth()
+  const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
-  const [selectedForm, setSelectedForm] = useState<PPEFormRow | null>(null)
-  const [forms] = useState<PPEFormRow[]>(MOCK_PPE_FORMS)
+  const [selectedFormId, setSelectedFormId] = useState<string | null>(null)
 
   // Create form state
   const [newSiteId, setNewSiteId] = useState('')
   const [newPeriod, setNewPeriod] = useState('')
   const [newItems, setNewItems] = useState<PPEItem[]>([{ name: '', quantity: 1 }])
+
+  // Fetch sites
+  const { data: sites } = useQuery({
+    queryKey: ['sites', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sites')
+        .select('*')
+        .eq('tenant_id', tenantId!)
+        .eq('status', 'active')
+        .order('name')
+      if (error) throw error
+      return data as SiteRow[]
+    },
+    enabled: !!tenantId,
+  })
+
+  // Fetch PPE forms
+  const { data: forms, isLoading } = useQuery({
+    queryKey: ['ppe-forms', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ppe_forms')
+        .select('*')
+        .eq('tenant_id', tenantId!)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data as PPEForm[]
+    },
+    enabled: !!tenantId,
+  })
+
+  // Fetch all signoffs for display
+  const { data: signoffs } = useQuery({
+    queryKey: ['ppe-signoffs', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ppe_signoffs')
+        .select('*')
+        .eq('tenant_id', tenantId!)
+      if (error) throw error
+      return data as PPESignoff[]
+    },
+    enabled: !!tenantId,
+  })
+
+  // Fetch workers for selected form's site
+  const { data: workers } = useQuery({
+    queryKey: ['workers-for-ppe', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('workers')
+        .select('id, full_name, employee_id, current_site_id')
+        .eq('tenant_id', tenantId!)
+        .eq('status', 'active')
+        .order('full_name')
+      if (error) throw error
+      return data as Pick<WorkerRow, 'id' | 'full_name' | 'employee_id' | 'current_site_id'>[]
+    },
+    enabled: !!tenantId,
+  })
+
+  const siteMap = new Map(sites?.map((s) => [s.id, s.name]) ?? [])
+
+  // Create PPE form mutation
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      if (!newSiteId || !newPeriod) throw new Error('Site and period are required')
+      const validItems = newItems.filter((i) => i.name.trim())
+      if (validItems.length === 0) throw new Error('At least one PPE item is required')
+
+      const { error } = await supabase.from('ppe_forms').insert({
+        tenant_id: tenantId!,
+        site_id: newSiteId,
+        period: newPeriod,
+        items: validItems,
+        created_by: user!.id,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ppe-forms'] })
+      setShowCreate(false)
+      setNewSiteId('')
+      setNewPeriod('')
+      setNewItems([{ name: '', quantity: 1 }])
+    },
+  })
 
   function addItem() {
     setNewItems([...newItems, { name: '', quantity: 1 }])
@@ -96,12 +156,21 @@ export function OfficePPEPage() {
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    // In production: insert into Supabase
-    setShowCreate(false)
-    setNewSiteId('')
-    setNewPeriod('')
-    setNewItems([{ name: '', quantity: 1 }])
+    createMutation.mutate()
   }
+
+  // Get signoff count for a form
+  function getSignoffInfo(formId: string, siteId: string) {
+    const formSignoffs = signoffs?.filter((s) => s.ppe_form_id === formId) ?? []
+    const siteWorkers = workers?.filter((w) => w.current_site_id === siteId) ?? []
+    return { signed: formSignoffs.length, total: siteWorkers.length }
+  }
+
+  // Get workers and their signoff status for selected form
+  const selectedForm = forms?.find((f) => f.id === selectedFormId)
+  const selectedFormWorkers = workers?.filter((w) => w.current_site_id === selectedForm?.site_id) ?? []
+  const selectedFormSignoffs = signoffs?.filter((s) => s.ppe_form_id === selectedFormId) ?? []
+  const signedWorkerIds = new Set(selectedFormSignoffs.map((s) => s.worker_id))
 
   return (
     <div className="space-y-6">
@@ -139,10 +208,8 @@ export function OfficePPEPage() {
                   required
                 >
                   <option value="">Select site...</option>
-                  {MOCK_SITES.map((site) => (
-                    <option key={site.id} value={site.id}>
-                      {site.name}
-                    </option>
+                  {sites?.map((site) => (
+                    <option key={site.id} value={site.id}>{site.name}</option>
                   ))}
                 </select>
               </div>
@@ -171,9 +238,7 @@ export function OfficePPEPage() {
                     >
                       <option value="">Select item...</option>
                       {PPE_PRESETS.map((preset) => (
-                        <option key={preset} value={preset}>
-                          {preset}
-                        </option>
+                        <option key={preset} value={preset}>{preset}</option>
                       ))}
                     </select>
                     <input
@@ -198,21 +263,24 @@ export function OfficePPEPage() {
                   </div>
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={addItem}
-                className="mt-2 text-sm text-[var(--color-primary)] hover:underline"
-              >
+              <button type="button" onClick={addItem} className="mt-2 text-sm text-[var(--color-primary)] hover:underline">
                 + Add another item
               </button>
             </div>
 
+            {createMutation.isError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                {(createMutation.error as Error).message}
+              </div>
+            )}
+
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="submit"
-                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors"
+                disabled={createMutation.isPending}
+                className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary-dark)] transition-colors disabled:opacity-50"
               >
-                Create Form
+                {createMutation.isPending ? 'Creating...' : 'Create Form'}
               </button>
               <button
                 type="button"
@@ -231,10 +299,10 @@ export function OfficePPEPage() {
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">
-              {selectedForm.site_name} - {selectedForm.period}
+              {siteMap.get(selectedForm.site_id) ?? 'Unknown Site'} - {selectedForm.period}
             </h3>
             <button
-              onClick={() => setSelectedForm(null)}
+              onClick={() => setSelectedFormId(null)}
               className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
             >
               Close
@@ -244,7 +312,7 @@ export function OfficePPEPage() {
           <div className="mb-4">
             <h4 className="text-sm font-medium text-[var(--color-text-muted)] mb-2">Items Issued</h4>
             <div className="flex flex-wrap gap-2">
-              {selectedForm.items.map((item, i) => (
+              {(selectedForm.items as PPEItem[]).map((item, i) => (
                 <span key={i} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
                   {item.name} x{item.quantity}
                 </span>
@@ -254,34 +322,34 @@ export function OfficePPEPage() {
 
           <div>
             <h4 className="text-sm font-medium text-[var(--color-text-muted)] mb-2">
-              Sign-offs ({selectedForm.sign_offs.filter((s) => s.signed).length}/{selectedForm.sign_offs.length})
+              Sign-offs ({signedWorkerIds.size}/{selectedFormWorkers.length})
             </h4>
             <div className="space-y-2">
-              {selectedForm.sign_offs.map((signOff) => (
-                <div
-                  key={signOff.worker_id}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50"
-                >
-                  <span className="text-sm font-medium">{signOff.worker_name}</span>
-                  <div className="flex items-center gap-2">
-                    {signOff.signed ? (
+              {selectedFormWorkers.map((worker) => {
+                const hasSigned = signedWorkerIds.has(worker.id)
+                const signoff = selectedFormSignoffs.find((s) => s.worker_id === worker.id)
+                return (
+                  <div
+                    key={worker.id}
+                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50"
+                  >
+                    <span className="text-sm font-medium">{worker.full_name}</span>
+                    {hasSigned ? (
                       <span className="inline-flex items-center gap-1 text-xs text-green-700 font-medium">
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                        Signed {signOff.signed_at ? new Date(signOff.signed_at).toLocaleDateString('en-SG') : ''}
+                        Signed {signoff?.acknowledged_at ? new Date(signoff.acknowledged_at).toLocaleDateString('en-SG') : ''}
                       </span>
                     ) : (
-                      <>
-                        <span className="text-xs text-amber-600 font-medium">Pending</span>
-                        <button className="text-xs text-[var(--color-primary)] hover:underline">
-                          Send Reminder
-                        </button>
-                      </>
+                      <span className="text-xs text-amber-600 font-medium">Pending</span>
                     )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
+              {selectedFormWorkers.length === 0 && (
+                <p className="text-sm text-[var(--color-text-muted)]">No workers currently assigned to this site.</p>
+              )}
             </div>
           </div>
         </div>
@@ -289,53 +357,48 @@ export function OfficePPEPage() {
 
       {/* Forms List */}
       <div className="bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-[var(--color-border)]">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Site</th>
-                <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Period</th>
-                <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Items</th>
-                <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Sign-offs</th>
-                <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-border)]">
-              {forms.length === 0 ? (
+        {isLoading ? (
+          <div className="p-8 text-center text-[var(--color-text-muted)]">Loading PPE forms...</div>
+        ) : !forms || forms.length === 0 ? (
+          <div className="p-8 text-center text-[var(--color-text-muted)]">
+            No PPE forms created yet. Click "Create PPE Form" to get started.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-[var(--color-border)]">
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-[var(--color-text-muted)]">
-                    No PPE forms created yet. Click "Create PPE Form" to get started.
-                  </td>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Site</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Period</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Items</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Sign-offs</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Created</th>
+                  <th className="text-left px-4 py-3 font-medium text-[var(--color-text-muted)]">Actions</th>
                 </tr>
-              ) : (
-                forms.map((form) => {
-                  const signedCount = form.sign_offs.filter((s) => s.signed).length
-                  const totalCount = form.sign_offs.length
+              </thead>
+              <tbody className="divide-y divide-[var(--color-border)]">
+                {forms.map((form) => {
+                  const info = getSignoffInfo(form.id, form.site_id)
                   return (
                     <tr key={form.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{form.site_name}</td>
+                      <td className="px-4 py-3 font-medium">{siteMap.get(form.site_id) ?? '-'}</td>
                       <td className="px-4 py-3 text-[var(--color-text-muted)]">{form.period}</td>
                       <td className="px-4 py-3 text-[var(--color-text-muted)]">
-                        {form.items.length} items
+                        {(form.items as PPEItem[]).length} items
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-sm font-medium ${signedCount === totalCount ? 'text-green-600' : 'text-amber-600'}`}>
-                          {signedCount}/{totalCount} signed
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          form.status === 'completed'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-blue-100 text-blue-800'
+                        <span className={`text-sm font-medium ${
+                          info.total > 0 && info.signed === info.total ? 'text-green-600' : 'text-amber-600'
                         }`}>
-                          {form.status === 'completed' ? 'Completed' : 'Open'}
+                          {info.signed}/{info.total} signed
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-[var(--color-text-muted)]">
+                        {new Date(form.created_at).toLocaleDateString('en-SG')}
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => setSelectedForm(form)}
+                          onClick={() => setSelectedFormId(form.id)}
                           className="text-[var(--color-primary)] hover:underline text-xs"
                         >
                           View Detail
@@ -343,11 +406,11 @@ export function OfficePPEPage() {
                       </td>
                     </tr>
                   )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

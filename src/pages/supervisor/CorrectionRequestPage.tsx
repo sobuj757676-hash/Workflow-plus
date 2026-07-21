@@ -56,12 +56,19 @@ export function CorrectionRequestPage() {
     mutationFn: async () => {
       if (!selectedEntry || !reason.trim()) throw new Error('Please fill in all required fields.')
 
-      // Store as a remark/correction in the DB
-      // In a real app, this would go to a correction_requests table
-      // For now we'll use a custom approach with the attendance_entries table
-      const { error } = await supabase.from('attendance_entries').update({
-        remark: `[CORRECTION REQUEST] ${reason}. Proposed: ${proposedTimeIn || 'same'}-${proposedTimeOut || 'same'}, OT: ${proposedOtHours || 'same'}`,
-      }).eq('id', selectedEntry.id)
+      const proposedChanges: Record<string, unknown> = {}
+      if (proposedTimeIn) proposedChanges.time_in = proposedTimeIn
+      if (proposedTimeOut) proposedChanges.time_out = proposedTimeOut
+      if (proposedOtHours) proposedChanges.ot_hours = parseFloat(proposedOtHours)
+
+      const { error } = await supabase.from('correction_requests').insert({
+        tenant_id: tenantId!,
+        attendance_entry_id: selectedEntry.id,
+        requested_by: user!.id,
+        reason: reason.trim(),
+        proposed_changes: proposedChanges,
+        status: 'pending',
+      })
 
       if (error) throw error
     },
