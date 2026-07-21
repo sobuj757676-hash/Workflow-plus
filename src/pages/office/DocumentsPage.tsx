@@ -172,7 +172,7 @@ export function OfficeDocumentsPage() {
     queryKey: ['documents', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('documents')
+        .from('worker_documents')
         .select('*')
         .eq('tenant_id', tenantId!)
         .order('expiry_date', { ascending: true })

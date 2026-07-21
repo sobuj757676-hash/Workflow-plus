@@ -1,29 +1,85 @@
 import { Link } from 'react-router-dom'
-
-const MOCK_WORKERS = [
-  { id: 'w1', name: 'Ali bin Hassan', status: 'present' },
-  { id: 'w2', name: 'Kumar Rajan', status: 'pending' },
-  { id: 'w3', name: 'Chen Wei Ming', status: 'present' },
-  { id: 'w4', name: 'Muthu Selvam', status: 'pending' },
-  { id: 'w5', name: 'Bao Tran', status: 'absent' },
-]
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import type { WorkerRow, AttendanceEntryRow, SiteRow } from '@/types/database'
 
 export function SupervisorDashboardPage() {
-  const presentCount = MOCK_WORKERS.filter((w) => w.status === 'present').length
-  const pendingCount = MOCK_WORKERS.filter((w) => w.status === 'pending').length
+  const { user, tenantId } = useAuth()
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Fetch workers assigned to this supervisor
+  const { data: workers } = useQuery({
+    queryKey: ['my-workers-dashboard', user?.id, tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('workers')
+        .select('*')
+        .eq('tenant_id', tenantId!)
+        .eq('current_supervisor_id', user!.id)
+        .eq('status', 'active')
+        .order('full_name')
+      if (error) throw error
+      return data as WorkerRow[]
+    },
+    enabled: !!user?.id && !!tenantId,
+  })
+
+  // Fetch today's attendance
+  const workerIds = workers?.map((w) => w.id) ?? []
+  const { data: todayEntries } = useQuery({
+    queryKey: ['today-attendance-dash', today, workerIds],
+    queryFn: async () => {
+      if (workerIds.length === 0) return []
+      const { data, error } = await supabase
+        .from('attendance_entries')
+        .select('*')
+        .in('worker_id', workerIds)
+        .eq('date', today)
+      if (error) throw error
+      return data as AttendanceEntryRow[]
+    },
+    enabled: workerIds.length > 0,
+  })
+
+  // Fetch supervisor's site
+  const { data: mySite } = useQuery({
+    queryKey: ['my-site', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sites')
+        .select('*')
+        .eq('supervisor_id', user!.id)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      return data as SiteRow | null
+    },
+    enabled: !!user?.id,
+  })
+
+  const entryMap = new Map<string, AttendanceEntryRow>()
+  todayEntries?.forEach((e) => entryMap.set(e.worker_id, e))
+
+  const totalWorkers = workers?.length ?? 0
+  const presentCount = todayEntries?.filter((e) => e.status === 'present' || e.status === 'ot' || e.status === 'half_day').length ?? 0
+  const pendingCount = totalWorkers - (todayEntries?.length ?? 0)
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Supervisor Dashboard</h1>
-        <p className="text-sm text-[var(--color-text-muted)]">Manage your site and workers</p>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          {new Date().toLocaleDateString('en-SG', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+        </p>
       </div>
 
-      {/* Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-4">
           <span className="text-2xl">👷</span>
-          <div className="text-2xl font-bold mt-2">{MOCK_WORKERS.length}</div>
+          <div className="text-2xl font-bold mt-2">{totalWorkers}</div>
           <div className="text-xs text-[var(--color-text-muted)] mt-1">My Workers</div>
         </div>
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-4">
@@ -34,11 +90,11 @@ export function SupervisorDashboardPage() {
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-4">
           <span className="text-2xl">⏳</span>
           <div className="text-2xl font-bold mt-2 text-amber-600">{pendingCount}</div>
-          <div className="text-xs text-[var(--color-text-muted)] mt-1">Pending Attendance</div>
+          <div className="text-xs text-[var(--color-text-muted)] mt-1">Not Recorded</div>
         </div>
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-4">
           <span className="text-2xl">🏗️</span>
-          <div className="text-2xl font-bold mt-2">Marina Bay</div>
+          <div className="text-lg font-bold mt-2 truncate">{mySite?.name ?? 'No site'}</div>
           <div className="text-xs text-[var(--color-text-muted)] mt-1">Current Site</div>
         </div>
       </div>
@@ -46,41 +102,56 @@ export function SupervisorDashboardPage() {
       {/* Quick Attendance */}
       <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold">Quick Attendance</h3>
+          <h3 className="font-semibold">Today's Workers</h3>
           <Link
             to="/supervisor/attendance"
             className="text-sm text-[var(--color-primary)] hover:underline"
           >
-            View All
+            Record Attendance
           </Link>
         </div>
-        <div className="space-y-2">
-          {MOCK_WORKERS.map((worker) => (
-            <div key={worker.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50">
-              <span className="text-sm font-medium">{worker.name}</span>
-              <div className="flex items-center gap-2">
-                {worker.status === 'present' ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                    Present
-                  </span>
-                ) : worker.status === 'absent' ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    Absent
-                  </span>
-                ) : (
-                  <Link
-                    to={`/supervisor/attendance/${worker.id}`}
-                    className="px-3 py-1 text-xs font-medium text-[var(--color-primary)] border border-[var(--color-primary)] rounded-lg hover:bg-blue-50 transition-colors"
-                  >
-                    Record
-                  </Link>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+        {!workers || workers.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-muted)]">No workers assigned yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {workers.slice(0, 8).map((worker) => {
+              const entry = entryMap.get(worker.id)
+              return (
+                <div key={worker.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-800 font-semibold text-xs">
+                      {worker.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="text-sm font-medium">{worker.full_name}</span>
+                  </div>
+                  {entry ? (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                      entry.status === 'present' || entry.status === 'ot'
+                        ? 'bg-green-100 text-green-800'
+                        : entry.status === 'absent'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {entry.status.replace('_', ' ')}
+                    </span>
+                  ) : (
+                    <Link
+                      to={`/supervisor/attendance/${worker.id}`}
+                      className="px-3 py-1 text-xs font-medium text-[var(--color-primary)] border border-[var(--color-primary)] rounded-lg hover:bg-blue-50 transition-colors"
+                    >
+                      Record
+                    </Link>
+                  )}
+                </div>
+              )
+            })}
+            {workers.length > 8 && (
+              <p className="text-xs text-[var(--color-text-muted)] text-center pt-2">
+                + {workers.length - 8} more workers
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick Links */}
